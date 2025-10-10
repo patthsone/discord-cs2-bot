@@ -21,6 +21,14 @@ data/
 *.sqlite
 *.sqlite3
 
+# MySQL dumps and backups
+*.sql
+backups/
+*.dump
+
+# Prisma
+prisma/migrations/dev.db*
+
 # Runtime data
 pids/
 *.pid
