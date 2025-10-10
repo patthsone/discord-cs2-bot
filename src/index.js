@@ -30,7 +30,11 @@ class DiscordBot {
         this.greetingSystem = new GreetingSystem(this);
         this.serverManagementService = new ServerManagementService(this);
         this.i18n = new Internationalization();
-        this.statusServer = new StatusServer();
+        
+        // Статус-сервер только для публичной статистики
+        if (process.env.STATUS_ENABLED === 'true') {
+            this.statusServer = new StatusServer();
+        }
         
         this.stats = {
             servers: 0,
@@ -66,9 +70,13 @@ class DiscordBot {
             this.cs2Monitor.startMonitoring();
             logger.info('CS2 monitoring started');
 
-            // Start status server
-            this.statusServer.start();
-            logger.info('Status server started');
+            // Start status server only if enabled
+            if (this.statusServer) {
+                this.statusServer.start();
+                logger.info('Status server started');
+            } else {
+                logger.info('Status server disabled (STATUS_ENABLED=false)');
+            }
 
             // Login to Discord
             await this.client.login(process.env.DISCORD_TOKEN);
@@ -129,6 +137,11 @@ class DiscordBot {
     }
 
     async updateStatusStats() {
+        // Обновляем статистику только если статус-сервер включен
+        if (!this.statusServer) {
+            return;
+        }
+        
         try {
             const response = await fetch(`http://localhost:${process.env.STATUS_PORT || 3000}/api/update-stats`, {
                 method: 'POST',
