@@ -166,6 +166,334 @@ Users can change their language using the `/language` command.
    npm start
    ```
 
+## 🖥️ VDS Deployment / Развертывание на VDS / Розгортання на VDS
+
+### Prerequisites for VDS / Предварительные требования для VDS / Попередні вимоги для VDS
+
+- Ubuntu 20.04+ or CentOS 8+ server
+- Root or sudo access
+- At least 1GB RAM and 10GB storage
+- Public IP address
+- Domain name (optional but recommended)
+
+- Сервер Ubuntu 20.04+ или CentOS 8+
+- Доступ root или sudo
+- Минимум 1GB RAM и 10GB хранилища
+- Публичный IP адрес
+- Доменное имя (опционально, но рекомендуется)
+
+- Сервер Ubuntu 20.04+ або CentOS 8+
+- Доступ root або sudo
+- Мінімум 1GB RAM та 10GB сховища
+- Публічна IP адреса
+- Доменне ім'я (опціонально, але рекомендовано)
+
+### Step 1: Server Setup / Настройка сервера / Налаштування сервера
+
+#### Update system packages / Обновление системных пакетов / Оновлення системних пакетів
+```bash
+# Ubuntu/Debian
+sudo apt update && sudo apt upgrade -y
+
+# CentOS/RHEL
+sudo yum update -y
+```
+
+#### Install Node.js / Установка Node.js / Встановлення Node.js
+```bash
+# Using NodeSource repository (recommended)
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Or using snap
+sudo snap install node --classic
+
+# Verify installation
+node --version
+npm --version
+```
+
+#### Install additional tools / Установка дополнительных инструментов / Встановлення додаткових інструментів
+```bash
+# Install Git, curl, and other essentials
+sudo apt install -y git curl wget unzip
+
+# Install PM2 for process management
+sudo npm install -g pm2
+
+# Install UFW firewall (optional)
+sudo apt install -y ufw
+sudo ufw enable
+sudo ufw allow ssh
+sudo ufw allow 22
+```
+
+### Step 2: Bot Deployment / Развертывание бота / Розгортання бота
+
+#### Clone and setup / Клонирование и настройка / Клонування та налаштування
+```bash
+# Create application directory
+sudo mkdir -p /opt/discord-bot
+sudo chown $USER:$USER /opt/discord-bot
+cd /opt/discord-bot
+
+# Clone repository
+git clone https://github.com/patthsone/discord-cs2-bot.git .
+
+# Install dependencies
+npm install --production
+```
+
+#### Configure environment / Настройка окружения / Налаштування середовища
+```bash
+# Copy environment template
+cp env.example .env
+
+# Edit environment file
+nano .env
+```
+
+**Required environment variables / Обязательные переменные окружения / Обов'язкові змінні середовища:**
+```env
+# Discord Configuration
+DISCORD_TOKEN=your_discord_bot_token_here
+CLIENT_ID=your_bot_client_id_here
+GUILD_ID=your_server_guild_id_here
+
+# Server Configuration
+NODE_ENV=production
+LOG_LEVEL=info
+UPDATE_INTERVAL_MINUTES=10
+
+# Optional: Database and logging paths
+DATABASE_PATH=/opt/discord-bot/data/bot.db
+LOG_PATH=/opt/discord-bot/logs
+```
+
+### Step 3: Process Management / Управление процессами / Управління процесами
+
+#### Create PM2 ecosystem file / Создание файла экосистемы PM2 / Створення файлу екосистеми PM2
+```bash
+# Create ecosystem file
+nano ecosystem.config.js
+```
+
+**ecosystem.config.js content / Содержимое ecosystem.config.js / Вміст ecosystem.config.js:**
+```javascript
+module.exports = {
+  apps: [{
+    name: 'discord-cs2-bot',
+    script: 'start.js',
+    cwd: '/opt/discord-bot',
+    instances: 1,
+    autorestart: true,
+    watch: false,
+    max_memory_restart: '1G',
+    env: {
+      NODE_ENV: 'production'
+    },
+    error_file: '/opt/discord-bot/logs/err.log',
+    out_file: '/opt/discord-bot/logs/out.log',
+    log_file: '/opt/discord-bot/logs/combined.log',
+    time: true
+  }]
+};
+```
+
+#### Start bot with PM2 / Запуск бота с PM2 / Запуск бота з PM2
+```bash
+# Start the bot
+pm2 start ecosystem.config.js
+
+# Save PM2 configuration
+pm2 save
+
+# Setup PM2 to start on boot
+pm2 startup
+sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u $USER --hp $HOME
+```
+
+### Step 4: Monitoring and Maintenance / Мониторинг и обслуживание / Моніторинг та обслуговування
+
+#### PM2 Commands / Команды PM2 / Команди PM2
+```bash
+# Check bot status
+pm2 status
+
+# View logs
+pm2 logs discord-cs2-bot
+
+# Restart bot
+pm2 restart discord-cs2-bot
+
+# Stop bot
+pm2 stop discord-cs2-bot
+
+# Monitor resources
+pm2 monit
+```
+
+#### Log Management / Управление логами / Управління логами
+```bash
+# Create logs directory
+mkdir -p /opt/discord-bot/logs
+
+# Set proper permissions
+chmod 755 /opt/discord-bot/logs
+
+# Setup log rotation (optional)
+sudo nano /etc/logrotate.d/discord-bot
+```
+
+**Log rotation configuration / Конфигурация ротации логов / Конфігурація ротації логів:**
+```
+/opt/discord-bot/logs/*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 644 $USER $USER
+    postrotate
+        pm2 reload discord-cs2-bot
+    endscript
+}
+```
+
+### Step 5: Security and Firewall / Безопасность и файрвол / Безпека та файрвол
+
+#### Configure firewall / Настройка файрвола / Налаштування файрволу
+```bash
+# Allow only necessary ports
+sudo ufw allow 22/tcp    # SSH
+sudo ufw allow 80/tcp    # HTTP (if using web interface)
+sudo ufw allow 443/tcp   # HTTPS (if using web interface)
+
+# Deny all other incoming connections
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+# Check firewall status
+sudo ufw status
+```
+
+#### SSL Certificate (Optional) / SSL сертификат (опционально) / SSL сертифікат (опціонально)
+```bash
+# Install Certbot
+sudo apt install -y certbot
+
+# Generate SSL certificate (replace your-domain.com)
+sudo certbot certonly --standalone -d your-domain.com
+```
+
+### Step 6: Backup and Updates / Резервное копирование и обновления / Резервне копіювання та оновлення
+
+#### Backup script / Скрипт резервного копирования / Скрипт резервного копіювання
+```bash
+# Create backup script
+nano /opt/discord-bot/backup.sh
+```
+
+**Backup script content / Содержимое скрипта резервного копирования / Вміст скрипта резервного копіювання:**
+```bash
+#!/bin/bash
+BACKUP_DIR="/opt/backups/discord-bot"
+DATE=$(date +%Y%m%d_%H%M%S)
+
+mkdir -p $BACKUP_DIR
+
+# Backup bot files
+tar -czf $BACKUP_DIR/bot_files_$DATE.tar.gz -C /opt discord-bot
+
+# Backup database
+cp /opt/discord-bot/data/bot.db $BACKUP_DIR/bot_db_$DATE.db
+
+# Keep only last 7 days of backups
+find $BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
+find $BACKUP_DIR -name "*.db" -mtime +7 -delete
+
+echo "Backup completed: $DATE"
+```
+
+```bash
+# Make backup script executable
+chmod +x /opt/discord-bot/backup.sh
+
+# Setup daily backup cron job
+crontab -e
+# Add this line:
+0 2 * * * /opt/discord-bot/backup.sh
+```
+
+#### Update script / Скрипт обновления / Скрипт оновлення
+```bash
+# Create update script
+nano /opt/discord-bot/update.sh
+```
+
+**Update script content / Содержимое скрипта обновления / Вміст скрипта оновлення:**
+```bash
+#!/bin/bash
+cd /opt/discord-bot
+
+# Stop bot
+pm2 stop discord-cs2-bot
+
+# Backup current version
+./backup.sh
+
+# Pull latest changes
+git pull origin main
+
+# Install new dependencies
+npm install --production
+
+# Start bot
+pm2 start discord-cs2-bot
+
+echo "Bot updated successfully!"
+```
+
+```bash
+# Make update script executable
+chmod +x /opt/discord-bot/update.sh
+```
+
+### Troubleshooting / Решение проблем / Вирішення проблем
+
+#### Common issues / Частые проблемы / Часті проблеми
+
+**Bot not starting / Бот не запускается / Бот не запускається:**
+```bash
+# Check PM2 logs
+pm2 logs discord-cs2-bot
+
+# Check environment variables
+pm2 show discord-cs2-bot
+
+# Verify Node.js version
+node --version
+```
+
+**Memory issues / Проблемы с памятью / Проблеми з пам'яттю:**
+```bash
+# Monitor memory usage
+pm2 monit
+
+# Restart if memory usage is high
+pm2 restart discord-cs2-bot
+```
+
+**Database issues / Проблемы с базой данных / Проблеми з базою даних:**
+```bash
+# Check database file permissions
+ls -la /opt/discord-bot/data/
+
+# Fix permissions if needed
+chmod 644 /opt/discord-bot/data/bot.db
+```
+
 ## 📋 Commands / Команды / Команди
 
 ### Leveling Commands / Команды системы уровней / Команди системи рівнів
