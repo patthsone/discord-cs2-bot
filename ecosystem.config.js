@@ -70,7 +70,7 @@ module.exports = {
   deploy: {
     production: {
       user: 'node',
-      host: 'your-server.com',
+      host: 'example.com',
       ref: 'origin/main',
       repo: 'git@github.com:your-username/discord-cs2-bot.git',
       path: '/var/www/discord-cs2-bot',
