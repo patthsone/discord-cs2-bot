@@ -167,6 +167,26 @@ EOF
 echo -e "${YELLOW}⚙️ Setting up PM2 startup...${NC}"
 sudo -u $BOT_USER pm2 startup systemd -u $BOT_USER --hp $BOT_DIR
 
+# Set up health monitoring
+echo -e "${YELLOW}🏥 Setting up health monitoring...${NC}"
+sudo -u $BOT_USER cp $BOT_DIR/scripts/health-check.sh $BOT_DIR/scripts/
+sudo chmod +x $BOT_DIR/scripts/health-check.sh
+
+# Set up network monitoring
+echo -e "${YELLOW}🌐 Setting up network monitoring...${NC}"
+sudo -u $BOT_USER cp $BOT_DIR/scripts/network-monitor.sh $BOT_DIR/scripts/
+sudo chmod +x $BOT_DIR/scripts/network-monitor.sh
+
+# Set up enhanced backup
+echo -e "${YELLOW}💾 Setting up enhanced backup...${NC}"
+sudo -u $BOT_USER cp $BOT_DIR/scripts/enhanced-backup.sh $BOT_DIR/scripts/
+sudo chmod +x $BOT_DIR/scripts/enhanced-backup.sh
+
+# Set up recovery script
+echo -e "${YELLOW}🔄 Setting up recovery script...${NC}"
+sudo -u $BOT_USER cp $BOT_DIR/scripts/recovery.sh $BOT_DIR/scripts/
+sudo chmod +x $BOT_DIR/scripts/recovery.sh
+
 # Create backup script
 echo -e "${YELLOW}💾 Creating backup script...${NC}"
 sudo -u $BOT_USER tee $BOT_DIR/scripts/backup.sh > /dev/null <<'EOF'
@@ -219,10 +239,18 @@ EOF
 
 sudo chmod +x $BOT_DIR/scripts/update.sh
 
-# Set up daily backup cron job
-echo -e "${YELLOW}⏰ Setting up daily backup...${NC}"
-sudo -u $BOT_USER crontab -l 2>/dev/null | grep -v "backup.sh" | sudo -u $BOT_USER crontab -
-echo "0 2 * * * $BOT_DIR/scripts/backup.sh" | sudo -u $BOT_USER crontab -
+# Set up cron jobs for monitoring and backups
+echo -e "${YELLOW}⏰ Setting up cron jobs...${NC}"
+sudo -u $BOT_USER crontab -l 2>/dev/null | grep -v "discord-bot" | sudo -u $BOT_USER crontab -
+
+# Add all cron jobs
+cat << EOF | sudo -u $BOT_USER crontab -
+# Discord CS2 Bot monitoring and maintenance
+*/5 * * * * $BOT_DIR/scripts/health-check.sh
+*/2 * * * * $BOT_DIR/scripts/network-monitor.sh
+0 */6 * * * $BOT_DIR/scripts/enhanced-backup.sh
+0 2 * * * $BOT_DIR/scripts/backup.sh
+EOF
 
 echo -e "${GREEN}🎉 Deployment completed successfully!${NC}"
 echo -e "${BLUE}======================================${NC}"

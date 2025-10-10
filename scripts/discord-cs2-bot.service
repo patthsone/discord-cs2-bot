@@ -1,0 +1,18 @@
+[Unit]
+Description=Discord CS2 Bot
+After=network.target
+
+[Service]
+Type=simple
+User=discord-bot
+WorkingDirectory=/opt/discord-bot
+ExecStart=/usr/bin/node start.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=discord-cs2-bot
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

@@ -313,6 +313,415 @@ pm2 startup
 sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u $USER --hp $HOME
 ```
 
+### Step 3.5: Ensuring Bot Persistence / Обеспечение постоянной работы бота / Забезпечення постійної роботи бота
+
+#### Auto-restart Configuration / Конфигурация автоматического перезапуска / Конфігурація автоматичного перезапуску
+
+**Enhanced ecosystem.config.js / Улучшенный ecosystem.config.js / Покращений ecosystem.config.js:**
+```javascript
+module.exports = {
+  apps: [{
+    name: 'discord-cs2-bot',
+    script: 'start.js',
+    cwd: '/opt/discord-bot',
+    instances: 1,
+    autorestart: true,
+    watch: false,
+    max_memory_restart: '1G',
+    min_uptime: '10s',
+    max_restarts: 10,
+    restart_delay: 4000,
+    kill_timeout: 5000,
+    wait_ready: true,
+    listen_timeout: 10000,
+    env: {
+      NODE_ENV: 'production'
+    },
+    error_file: '/opt/discord-bot/logs/err.log',
+    out_file: '/opt/discord-bot/logs/out.log',
+    log_file: '/opt/discord-bot/logs/combined.log',
+    time: true,
+    merge_logs: true,
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+  }]
+};
+```
+
+#### Systemd Service (Alternative to PM2) / Системный сервис (альтернатива PM2) / Системний сервіс (альтернатива PM2)
+
+**Create systemd service / Создание системного сервиса / Створення системного сервісу:**
+```bash
+# Create systemd service file
+sudo nano /etc/systemd/system/discord-cs2-bot.service
+```
+
+**Service file content / Содержимое файла сервиса / Вміст файлу сервісу:**
+```ini
+[Unit]
+Description=Discord CS2 Bot
+After=network.target
+
+[Service]
+Type=simple
+User=discord-bot
+WorkingDirectory=/opt/discord-bot
+ExecStart=/usr/bin/node start.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=discord-cs2-bot
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Enable and start service / Включение и запуск сервиса / Увімкнення та запуск сервісу:**
+```bash
+# Reload systemd
+sudo systemctl daemon-reload
+
+# Enable service to start on boot
+sudo systemctl enable discord-cs2-bot
+
+# Start service
+sudo systemctl start discord-cs2-bot
+
+# Check status
+sudo systemctl status discord-cs2-bot
+
+# View logs
+sudo journalctl -u discord-cs2-bot -f
+```
+
+#### Health Check Script / Скрипт проверки здоровья / Скрипт перевірки здоров'я
+
+**Create health check script / Создание скрипта проверки / Створення скрипта перевірки:**
+```bash
+# Create health check script
+nano /opt/discord-bot/scripts/health-check.sh
+```
+
+**Health check script content / Содержимое скрипта проверки / Вміст скрипта перевірки:**
+```bash
+#!/bin/bash
+
+# Discord CS2 Bot Health Check Script
+BOT_NAME="discord-cs2-bot"
+LOG_FILE="/opt/discord-bot/logs/health-check.log"
+MAX_RESTART_ATTEMPTS=5
+RESTART_COUNT_FILE="/opt/discord-bot/data/restart_count.txt"
+
+# Function to log messages
+log_message() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> $LOG_FILE
+}
+
+# Check if bot is running
+if ! pm2 list | grep -q "$BOT_NAME.*online"; then
+    log_message "WARNING: Bot is not running, attempting to restart..."
+    
+    # Read restart count
+    if [ -f "$RESTART_COUNT_FILE" ]; then
+        RESTART_COUNT=$(cat $RESTART_COUNT_FILE)
+    else
+        RESTART_COUNT=0
+    fi
+    
+    # Check if we've exceeded max restart attempts
+    if [ $RESTART_COUNT -ge $MAX_RESTART_ATTEMPTS ]; then
+        log_message "ERROR: Maximum restart attempts ($MAX_RESTART_ATTEMPTS) exceeded. Manual intervention required."
+        exit 1
+    fi
+    
+    # Increment restart count
+    RESTART_COUNT=$((RESTART_COUNT + 1))
+    echo $RESTART_COUNT > $RESTART_COUNT_FILE
+    
+    # Attempt to restart bot
+    pm2 restart $BOT_NAME
+    
+    # Wait a moment and check if restart was successful
+    sleep 10
+    if pm2 list | grep -q "$BOT_NAME.*online"; then
+        log_message "SUCCESS: Bot restarted successfully (attempt $RESTART_COUNT)"
+        # Reset restart count on successful restart
+        echo 0 > $RESTART_COUNT_FILE
+    else
+        log_message "ERROR: Failed to restart bot (attempt $RESTART_COUNT)"
+    fi
+else
+    log_message "INFO: Bot is running normally"
+    # Reset restart count when bot is healthy
+    echo 0 > $RESTART_COUNT_FILE
+fi
+
+# Check memory usage
+MEMORY_USAGE=$(pm2 jlist | jq -r ".[] | select(.name==\"$BOT_NAME\") | .monit.memory")
+if [ "$MEMORY_USAGE" != "null" ] && [ "$MEMORY_USAGE" -gt 800000000 ]; then
+    log_message "WARNING: High memory usage detected: ${MEMORY_USAGE} bytes"
+fi
+
+# Check uptime
+UPTIME=$(pm2 jlist | jq -r ".[] | select(.name==\"$BOT_NAME\") | .pm2_env.status")
+if [ "$UPTIME" = "errored" ]; then
+    log_message "ERROR: Bot status is errored, attempting restart..."
+    pm2 restart $BOT_NAME
+fi
+```
+
+```bash
+# Make health check script executable
+chmod +x /opt/discord-bot/scripts/health-check.sh
+
+# Setup health check cron job (every 5 minutes)
+crontab -e
+# Add this line:
+*/5 * * * * /opt/discord-bot/scripts/health-check.sh
+```
+
+#### Network Resilience / Сетевая устойчивость / Мережева стійкість
+
+**Create network monitoring script / Создание скрипта мониторинга сети / Створення скрипта моніторингу мережі:**
+```bash
+# Create network monitoring script
+nano /opt/discord-bot/scripts/network-monitor.sh
+```
+
+**Network monitoring script content / Содержимое скрипта мониторинга сети / Вміст скрипта моніторингу мережі:**
+```bash
+#!/bin/bash
+
+# Network connectivity monitoring for Discord CS2 Bot
+LOG_FILE="/opt/discord-bot/logs/network-monitor.log"
+BOT_NAME="discord-cs2-bot"
+
+# Function to log messages
+log_message() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> $LOG_FILE
+}
+
+# Check internet connectivity
+if ! ping -c 1 8.8.8.8 > /dev/null 2>&1; then
+    log_message "WARNING: No internet connectivity detected"
+    exit 1
+fi
+
+# Check Discord API connectivity
+if ! curl -s --max-time 10 https://discord.com/api/v10/gateway > /dev/null; then
+    log_message "WARNING: Cannot reach Discord API"
+    # Restart bot if Discord API is unreachable
+    pm2 restart $BOT_NAME
+    exit 1
+fi
+
+# Check if bot process is responding
+if ! pm2 list | grep -q "$BOT_NAME.*online"; then
+    log_message "WARNING: Bot process is not online"
+    pm2 restart $BOT_NAME
+fi
+
+log_message "INFO: Network connectivity check passed"
+```
+
+```bash
+# Make network monitoring script executable
+chmod +x /opt/discord-bot/scripts/network-monitor.sh
+
+# Setup network monitoring cron job (every 2 minutes)
+crontab -e
+# Add this line:
+*/2 * * * * /opt/discord-bot/scripts/network-monitor.sh
+```
+
+#### Database Backup and Recovery / Резервное копирование и восстановление базы данных / Резервне копіювання та відновлення бази даних
+
+**Enhanced backup script / Улучшенный скрипт резервного копирования / Покращений скрипт резервного копіювання:**
+```bash
+# Create enhanced backup script
+nano /opt/discord-bot/scripts/enhanced-backup.sh
+```
+
+**Enhanced backup script content / Содержимое улучшенного скрипта резервного копирования / Вміст покращеного скрипта резервного копіювання:**
+```bash
+#!/bin/bash
+
+# Enhanced backup script for Discord CS2 Bot
+BACKUP_DIR="/opt/backups/discord-bot"
+DATE=$(date +%Y%m%d_%H%M%S)
+BOT_DIR="/opt/discord-bot"
+LOG_FILE="/opt/discord-bot/logs/backup.log"
+
+# Function to log messages
+log_message() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> $LOG_FILE
+}
+
+log_message "Starting backup process..."
+
+# Create backup directory
+mkdir -p $BACKUP_DIR
+
+# Stop bot temporarily for consistent backup
+pm2 stop discord-cs2-bot
+sleep 5
+
+# Backup bot files
+tar -czf $BACKUP_DIR/bot_files_$DATE.tar.gz -C /opt discord-bot
+
+# Backup database with integrity check
+if [ -f $BOT_DIR/data/bot.db ]; then
+    # Create database backup
+    cp $BOT_DIR/data/bot.db $BACKUP_DIR/bot_db_$DATE.db
+    
+    # Verify database integrity
+    sqlite3 $BACKUP_DIR/bot_db_$DATE.db "PRAGMA integrity_check;" > /dev/null
+    if [ $? -eq 0 ]; then
+        log_message "Database backup verified successfully"
+    else
+        log_message "WARNING: Database backup integrity check failed"
+    fi
+fi
+
+# Backup configuration files
+cp $BOT_DIR/.env $BACKUP_DIR/env_$DATE.backup 2>/dev/null || true
+cp $BOT_DIR/ecosystem.config.js $BACKUP_DIR/ecosystem_$DATE.backup 2>/dev/null || true
+
+# Restart bot
+pm2 start discord-cs2-bot
+
+# Keep only last 7 days of backups
+find $BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
+find $BACKUP_DIR -name "*.db" -mtime +7 -delete
+find $BACKUP_DIR -name "*.backup" -mtime +7 -delete
+
+log_message "Backup completed successfully: $DATE"
+
+# Create backup verification script
+cat > $BACKUP_DIR/verify_backup.sh << 'EOF'
+#!/bin/bash
+BACKUP_FILE=$1
+if [ -z "$BACKUP_FILE" ]; then
+    echo "Usage: $0 <backup_file.tar.gz>"
+    exit 1
+fi
+
+echo "Verifying backup: $BACKUP_FILE"
+tar -tzf "$BACKUP_FILE" > /dev/null
+if [ $? -eq 0 ]; then
+    echo "Backup verification successful"
+else
+    echo "Backup verification failed"
+    exit 1
+fi
+EOF
+
+chmod +x $BACKUP_DIR/verify_backup.sh
+```
+
+```bash
+# Make enhanced backup script executable
+chmod +x /opt/discord-bot/scripts/enhanced-backup.sh
+
+# Setup enhanced backup cron job (every 6 hours)
+crontab -e
+# Add this line:
+0 */6 * * * /opt/discord-bot/scripts/enhanced-backup.sh
+```
+
+#### Recovery Script / Скрипт восстановления / Скрипт відновлення
+
+**Create recovery script / Создание скрипта восстановления / Створення скрипта відновлення:**
+```bash
+# Create recovery script
+nano /opt/discord-bot/scripts/recovery.sh
+```
+
+**Recovery script content / Содержимое скрипта восстановления / Вміст скрипта відновлення:**
+```bash
+#!/bin/bash
+
+# Recovery script for Discord CS2 Bot
+BACKUP_DIR="/opt/backups/discord-bot"
+BOT_DIR="/opt/discord-bot"
+LOG_FILE="/opt/discord-bot/logs/recovery.log"
+
+# Function to log messages
+log_message() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> $LOG_FILE
+}
+
+# Function to restore from backup
+restore_from_backup() {
+    local backup_file=$1
+    local backup_date=$2
+    
+    log_message "Starting recovery from backup: $backup_file"
+    
+    # Stop bot
+    pm2 stop discord-cs2-bot
+    
+    # Create recovery directory
+    mkdir -p $BOT_DIR/recovery_$backup_date
+    
+    # Extract backup
+    tar -xzf $backup_file -C $BOT_DIR/recovery_$backup_date
+    
+    # Restore files
+    cp -r $BOT_DIR/recovery_$backup_date/discord-bot/* $BOT_DIR/
+    
+    # Restore database
+    if [ -f $BACKUP_DIR/bot_db_$backup_date.db ]; then
+        cp $BACKUP_DIR/bot_db_$backup_date.db $BOT_DIR/data/bot.db
+    fi
+    
+    # Restore configuration
+    if [ -f $BACKUP_DIR/env_$backup_date.backup ]; then
+        cp $BACKUP_DIR/env_$backup_date.backup $BOT_DIR/.env
+    fi
+    
+    # Cleanup recovery directory
+    rm -rf $BOT_DIR/recovery_$backup_date
+    
+    # Start bot
+    pm2 start discord-cs2-bot
+    
+    log_message "Recovery completed successfully"
+}
+
+# List available backups
+list_backups() {
+    echo "Available backups:"
+    ls -la $BACKUP_DIR/*.tar.gz 2>/dev/null | awk '{print $9, $6, $7, $8}'
+}
+
+# Main recovery logic
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <backup_date>"
+    echo "Example: $0 20240115_143000"
+    echo ""
+    list_backups
+    exit 1
+fi
+
+BACKUP_DATE=$1
+BACKUP_FILE="$BACKUP_DIR/bot_files_${BACKUP_DATE}.tar.gz"
+
+if [ ! -f "$BACKUP_FILE" ]; then
+    echo "Backup file not found: $BACKUP_FILE"
+    list_backups
+    exit 1
+fi
+
+restore_from_backup "$BACKUP_FILE" "$BACKUP_DATE"
+```
+
+```bash
+# Make recovery script executable
+chmod +x /opt/discord-bot/scripts/recovery.sh
+```
+
 ### Step 4: Monitoring and Maintenance / Мониторинг и обслуживание / Моніторинг та обслуговування
 
 #### PM2 Commands / Команды PM2 / Команди PM2
