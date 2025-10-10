@@ -58,13 +58,13 @@ The bot includes a built-in status page that shows real-time statistics about bo
 
 **Access / Доступ / Доступ:**
 - **Local development:** `http://localhost:3000`
-- **Production:** `https://patthsone.github.io/discord-cs2-bot/` (GitHub Pages)
+- **Production:** `https://starladder-project.ru/` (Custom Domain)
 
 - **Локальная разработка:** `http://localhost:3000`
-- **Продакшн:** `https://patthsone.github.io/discord-cs2-bot/` (GitHub Pages)
+- **Продакшн:** `https://starladder-project.ru/` (Кастомный домен)
 
 - **Локальна розробка:** `http://localhost:3000`
-- **Продакшн:** `https://patthsone.github.io/discord-cs2-bot/` (GitHub Pages)
+- **Продакшн:** `https://starladder-project.ru/` (Кастомний домен)
 
 ## ✨ Features / Возможности / Можливості
 

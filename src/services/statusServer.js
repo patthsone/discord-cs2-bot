@@ -28,10 +28,11 @@ class StatusServer {
 
     setupMiddleware() {
         this.app.use(express.json());
-        this.app.use(express.static(path.join(__dirname, 'public')));
+        this.app.use(express.static(path.join(__dirname, '..', '..', 'public')));
         this.app.use((req, res, next) => {
             res.header('Access-Control-Allow-Origin', '*');
             res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+            res.header('X-Powered-By', 'Starladder Project');
             next();
         });
     }
@@ -39,7 +40,7 @@ class StatusServer {
     setupRoutes() {
         // Главная страница статуса
         this.app.get('/', (req, res) => {
-            res.sendFile(path.join(__dirname, 'public', 'index.html'));
+            res.sendFile(path.join(__dirname, '..', '..', 'public', 'index.html'));
         });
 
         // API для получения статистики

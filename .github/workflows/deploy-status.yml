@@ -36,4 +36,4 @@ jobs:
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./docs
-        cname: status.discord-cs2-bot.com  # Замените на ваш домен
+        cname: starladder-project.ru
