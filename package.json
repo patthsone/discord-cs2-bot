@@ -26,7 +26,9 @@
     "pm2:stop": "pm2 stop discord-cs2-bot",
     "pm2:restart": "pm2 restart discord-cs2-bot",
     "pm2:logs": "pm2 logs discord-cs2-bot",
-    "pm2:monit": "pm2 monit"
+    "pm2:monit": "pm2 monit",
+    "check:actions": "bash scripts/check-github-actions.sh",
+    "check:workflows": "echo GitHub Actions workflows: && dir .github\\workflows"
   },
   "keywords": [
     "discord",
