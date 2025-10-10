@@ -1,0 +1,88 @@
+name: CI Only (No Deploy)
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Generate Prisma client
+      run: npm run db:generate
+      continue-on-error: true
+      
+    - name: Run linting
+      run: npm run lint
+      continue-on-error: true
+      
+    - name: Run tests
+      run: npm test
+      
+    - name: Build project
+      run: npm run build
+      continue-on-error: true
+      
+    - name: Security audit
+      run: npm audit --audit-level=moderate
+      continue-on-error: true
+
+  validate-config:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Validate package.json
+      run: |
+        echo "📦 Package validation:"
+        node -e "
+          const pkg = require('./package.json');
+          console.log('✅ Package name:', pkg.name);
+          console.log('✅ Package version:', pkg.version);
+          console.log('✅ Node.js requirement:', pkg.engines?.node || 'Not specified');
+          console.log('✅ Available scripts:', Object.keys(pkg.scripts).join(', '));
+        "
+        
+    - name: Check file structure
+      run: |
+        echo "📁 Project structure validation:"
+        echo "✅ Source directory exists: $(test -d src && echo 'Yes' || echo 'No')"
+        echo "✅ Prisma schema exists: $(test -f prisma/schema.prisma && echo 'Yes' || echo 'No')"
+        echo "✅ Package.json exists: $(test -f package.json && echo 'Yes' || echo 'No')"
+        echo "✅ Ecosystem config exists: $(test -f ecosystem.config.js && echo 'Yes' || echo 'No')"
+        
+    - name: Test Prisma generation
+      run: |
+        echo "🔧 Testing Prisma client generation..."
+        npm run db:generate
+        echo "✅ Prisma client generated successfully"

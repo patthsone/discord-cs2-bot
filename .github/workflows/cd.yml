@@ -38,7 +38,23 @@ jobs:
         npm install -g pm2
         pm2 --version
         
+    - name: Check deployment secrets
+      run: |
+        if [ -z "${{ secrets.DEPLOY_HOST }}" ] || [ -z "${{ secrets.DEPLOY_USER }}" ] || [ -z "${{ secrets.DEPLOY_KEY }}" ] || [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
+          echo "⚠️ Deployment secrets not configured. Skipping deployment."
+          echo "Please configure the following secrets in GitHub repository settings:"
+          echo "- DEPLOY_HOST"
+          echo "- DEPLOY_USER" 
+          echo "- DEPLOY_KEY"
+          echo "- DEPLOY_PATH"
+          echo "See GITHUB_ACTIONS_SETUP.md for detailed instructions."
+          exit 0
+        else
+          echo "✅ Deployment secrets configured. Proceeding with deployment."
+        fi
+        
     - name: Deploy to server
+      if: secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_KEY != '' && secrets.DEPLOY_PATH != ''
       env:
         DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -49,11 +65,17 @@ jobs:
         echo "$DEPLOY_KEY" > deploy_key
         chmod 600 deploy_key
         
+        # Проверяем подключение к серверу
+        echo "🔍 Testing SSH connection..."
+        ssh -i deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 $DEPLOY_USER@$DEPLOY_HOST "echo 'SSH connection successful'"
+        
         # Копируем файлы на сервер
-        scp -i deploy_key -o StrictHostKeyChecking=no -r . $DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH
+        echo "📁 Copying files to server..."
+        scp -i deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -r . $DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH
         
         # Выполняем команды на сервере
-        ssh -i deploy_key -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_HOST "
+        echo "🚀 Deploying application..."
+        ssh -i deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 $DEPLOY_USER@$DEPLOY_HOST "
           cd $DEPLOY_PATH &&
           npm ci --production &&
           pm2 restart discord-cs2-bot || pm2 start ecosystem.config.js
@@ -61,6 +83,7 @@ jobs:
         
         # Очищаем ключ
         rm deploy_key
+        echo "✅ Deployment completed successfully!"
 
   docker-build:
     runs-on: ubuntu-latest
