@@ -1,0 +1,36 @@
+{
+  "name": "discord-cs2-bot",
+  "version": "1.0.0",
+  "description": "A comprehensive Discord bot with CS2 server monitoring, player greeting, and leveling system",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node start.js",
+    "dev": "nodemon src/index.js",
+    "bot": "node src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "cs2",
+    "counter-strike",
+    "gaming",
+    "leveling"
+  ],
+  "author": "patthsone",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "axios": "^1.6.2",
+    "node-cron": "^3.0.3",
+    "sqlite3": "^5.1.6",
+    "dotenv": "^16.3.1",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

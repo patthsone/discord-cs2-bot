@@ -1,0 +1,164 @@
+{
+  "meta": {
+    "name": "English",
+    "flag": "🇺🇸",
+    "code": "en"
+  },
+  "commands": {
+    "level": {
+      "title": "📊 {username}'s Level",
+      "level": "⭐ Level",
+      "xp": "🎯 XP",
+      "rank": "🏆 Rank",
+      "progress": "📈 Progress to Next Level",
+      "messages": "💬 Messages",
+      "voiceTime": "🎤 Voice Time",
+      "userNotFound": "❌ User Not Found",
+      "noXp": "{user} hasn't earned any XP yet!"
+    },
+    "leaderboard": {
+      "title": "🏆 Server Leaderboard",
+      "empty": "No users found on the leaderboard yet!"
+    },
+    "serverstatus": {
+      "title": "🎮 CS2 Server Status",
+      "online": "🟢",
+      "offline": "🔴",
+      "serverName": "🖥️ Server Name",
+      "currentMap": "🗺️ Current Map",
+      "players": "👥 Players",
+      "game": "🎮 Game",
+      "status": "📊 Status",
+      "lastUpdated": "⏱️ Last Updated",
+      "ping": "📡 Ping",
+      "error": "❌ Error",
+      "noServers": "❌ No Servers Configured",
+      "noServersDesc": "No CS2 servers are configured for this guild. Use `/addserver` to add one!",
+      "serverNotFound": "❌ Server Not Found",
+      "permissionDenied": "❌ Permission Denied",
+      "permissionDeniedDesc": "You can only check servers from your own guild."
+    },
+    "addserver": {
+      "title": "✅ Server Added Successfully",
+      "description": "CS2 server has been added to monitoring",
+      "serverName": "🖥️ Server Name",
+      "address": "🌐 Address",
+      "serverId": "🆔 Server ID",
+      "permissionDenied": "❌ Permission Denied",
+      "permissionDeniedDesc": "You don't have permission to manage servers. Contact an administrator.",
+      "invalidIp": "❌ Invalid IP Address",
+      "invalidIpDesc": "Please provide a valid IPv4 address.",
+      "error": "❌ Error",
+      "errorDesc": "An error occurred while adding the server. Please try again."
+    },
+    "removeserver": {
+      "title": "🗑️ Server Removed",
+      "description": "CS2 server \"{serverName}\" has been removed from monitoring",
+      "permissionDenied": "❌ Permission Denied",
+      "permissionDeniedDesc": "You don't have permission to manage servers. Contact an administrator.",
+      "serverNotFound": "❌ Server Not Found",
+      "serverNotFoundDesc": "Server not found or already removed.",
+      "permissionDeniedGuild": "❌ Permission Denied",
+      "permissionDeniedGuildDesc": "You can only remove servers from your own guild.",
+      "error": "❌ Error",
+      "errorDesc": "An error occurred while removing the server. Please try again."
+    },
+    "listservers": {
+      "title": "🎮 CS2 Servers",
+      "description": "Servers configured for {guildName}",
+      "empty": "No servers configured. Use `/addserver` to add one!",
+      "active": "🟢 Active",
+      "inactive": "🔴 Inactive",
+      "monitoring": "Monitoring",
+      "notSet": "Not set",
+      "error": "❌ Error",
+      "errorDesc": "An error occurred while fetching servers. Please try again."
+    },
+    "setmonitoringchannel": {
+      "title": "✅ Monitoring Channel Updated",
+      "description": "Monitoring channel for **{serverName}** has been set to {channel}",
+      "permissionDenied": "❌ Permission Denied",
+      "permissionDeniedDesc": "You don't have permission to manage servers. Contact an administrator.",
+      "serverNotFound": "❌ Server Not Found",
+      "serverNotFoundDesc": "Server not found.",
+      "permissionDeniedGuild": "❌ Permission Denied",
+      "permissionDeniedGuildDesc": "You can only modify servers from your own guild.",
+      "error": "❌ Error",
+      "errorDesc": "An error occurred while updating the monitoring channel. Please try again."
+    },
+    "addmanagementrole": {
+      "title": "✅ Management Role Added",
+      "description": "Role {role} can now manage CS2 servers.",
+      "error": "❌ Error",
+      "errorDesc": "An error occurred while adding the management role. Please try again."
+    },
+    "removemanagementrole": {
+      "title": "✅ Management Role Removed",
+      "description": "Role {role} can no longer manage CS2 servers.",
+      "notFound": "❌ Role Not Found",
+      "notFoundDesc": "Role {role} was not in the management roles list.",
+      "error": "❌ Error",
+      "errorDesc": "An error occurred while removing the management role. Please try again."
+    },
+    "setgreeting": {
+      "title": "✅ Greeting Message Set",
+      "description": "Custom greeting message has been set:\n\n{message}",
+      "error": "❌ Error",
+      "errorDesc": "An error occurred while setting the greeting message."
+    },
+    "language": {
+      "title": "🌍 Language Settings",
+      "current": "Current Language",
+      "available": "Available Languages",
+      "setSuccess": "✅ Language Updated",
+      "setSuccessDesc": "Your language has been set to {language}",
+      "invalidLanguage": "❌ Invalid Language",
+      "invalidLanguageDesc": "Please select a valid language from the list.",
+      "error": "❌ Error",
+      "errorDesc": "An error occurred while setting the language."
+    }
+  },
+  "events": {
+    "welcome": {
+      "title": "🎉 Welcome!",
+      "messages": [
+        "Welcome to our server, {user}! 🎮",
+        "Hey {user}, glad to have you here! 🚀",
+        "Welcome aboard, {user}! Ready for some CS2 action? 🔫",
+        "Hello {user}! Make yourself at home! 🏠",
+        "Welcome {user}! Don't forget to check out our rules! 📋"
+      ],
+      "user": "👤 User",
+      "accountCreated": "📅 Account Created",
+      "memberCount": "👥 Member Count",
+      "footer": "Welcome to {guildName}!"
+    },
+    "levelup": {
+      "title": "🎉 Level Up!",
+      "description": "Congratulations {user}! You've reached level **{level}**!",
+      "previousLevel": "📈 Previous Level",
+      "newLevel": "⭐ New Level",
+      "xpRequired": "🎯 XP Required for Next Level",
+      "footer": "Keep chatting to level up more!"
+    }
+  },
+  "embeds": {
+    "error": "❌ Error",
+    "success": "✅ Success",
+    "info": "ℹ️ Information",
+    "warning": "⚠️ Warning"
+  },
+  "common": {
+    "yes": "Yes",
+    "no": "No",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "success": "Success",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "close": "Close"
+  }
+}
