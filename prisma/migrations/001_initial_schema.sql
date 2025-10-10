@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS level_rewards (
 -- Greeting settings
 CREATE TABLE IF NOT EXISTS greeting_settings (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    guild_id VARCHAR(255) NOT NULL,
+    guild_id VARCHAR(255) NOT NULL UNIQUE,
     welcome_channel_id VARCHAR(255),
     welcome_message TEXT,
     auto_role_id VARCHAR(255),

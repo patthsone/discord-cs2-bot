@@ -93,7 +93,7 @@ model LevelReward {
 
 model GreetingSetting {
   id              Int      @id @default(autoincrement())
-  guildId         String   @map("guild_id") @db.VarChar(255)
+  guildId         String   @unique @map("guild_id") @db.VarChar(255)
   welcomeChannelId String? @map("welcome_channel_id") @db.VarChar(255)
   welcomeMessage  String?  @map("welcome_message") @db.Text
   autoRoleId      String?  @map("auto_role_id") @db.VarChar(255)
