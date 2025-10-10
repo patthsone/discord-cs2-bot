@@ -24,11 +24,14 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
+    - name: Generate Prisma client
+      run: npm run db:generate
+      
     - name: Run tests
-      run: npm test --if-present
+      run: npm test
       
     - name: Build project
-      run: npm run build --if-present
+      run: npm run build
       
     - name: Setup PM2
       run: |
