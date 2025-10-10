@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version-file: '.nvmrc'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Generate Prisma client
+      run: npx prisma generate
+
+    - name: Build project
+      run: |
+        mkdir -p dist
+        cp -r src dist/
+        cp -r prisma dist/
+        cp package*.json dist/
+        cp ecosystem.config.js dist/
+        cp README.md dist/
+        cp LICENSE dist/
+
+    - name: Create release archive
+      run: |
+        tar -czf discord-cs2-bot-${{ github.ref_name }}.tar.gz dist/
+        zip -r discord-cs2-bot-${{ github.ref_name }}.zip dist/
+
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        body: |
+          ## Discord CS2 Bot Release ${{ github.ref_name }}
+          
+          ### Features
+          - High-performance MySQL database with Redis caching
+          - CS2 server monitoring with gamedig
+          - Player leveling system
+          - Automated greetings and role management
+          - Multi-language support
+          - Comprehensive logging and monitoring
+          
+          ### Installation
+          1. Download the archive for your platform
+          2. Extract the files
+          3. Run `npm install`
+          4. Configure your `.env` file
+          5. Run `npm run setup` to initialize database
+          6. Start with `npm start`
+          
+          ### Files
+          - `discord-cs2-bot-${{ github.ref_name }}.tar.gz` - Linux/macOS
+          - `discord-cs2-bot-${{ github.ref_name }}.zip` - Windows
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./discord-cs2-bot-${{ github.ref_name }}.tar.gz
+        asset_name: discord-cs2-bot-${{ github.ref_name }}.tar.gz
+        asset_content_type: application/gzip
+
+    - name: Upload Release Assets (Windows)
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./discord-cs2-bot-${{ github.ref_name }}.zip
+        asset_name: discord-cs2-bot-${{ github.ref_name }}.zip
+        asset_content_type: application/zip
