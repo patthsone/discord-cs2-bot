@@ -1,7 +1,0 @@
-User-agent: *
-Allow: /
-
-# Starladder Project - Discord CS2 Bot Status Page
-# https://starladder-project.ru/
-
-Sitemap: https://starladder-project.ru/sitemap.xml

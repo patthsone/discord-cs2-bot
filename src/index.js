@@ -9,7 +9,6 @@ const ServerManagementService = require('./services/serverManagementService');
 const Internationalization = require('./utils/i18n');
 const CommandHandler = require('./handlers/commandHandler');
 const EventHandler = require('./handlers/eventHandler');
-const StatusServer = require('./services/statusServer');
 
 class DiscordBot {
     constructor() {
@@ -30,23 +29,6 @@ class DiscordBot {
         this.greetingSystem = new GreetingSystem(this);
         this.serverManagementService = new ServerManagementService(this);
         this.i18n = new Internationalization();
-        
-        // Статус-сервер только для публичной статистики
-        if (process.env.STATUS_ENABLED === 'true') {
-            this.statusServer = new StatusServer();
-        }
-        
-        this.stats = {
-            servers: 0,
-            users: 0,
-            cs2Servers: 0,
-            commandsUsed: 0,
-            features: {
-                leveling: 0,
-                greetings: 0,
-                cs2Monitoring: 0
-            }
-        };
         
         this.initializeBot();
     }
@@ -70,19 +52,8 @@ class DiscordBot {
             this.cs2Monitor.startMonitoring();
             logger.info('CS2 monitoring started');
 
-            // Start status server only if enabled
-            if (this.statusServer) {
-                this.statusServer.start();
-                logger.info('Status server started');
-            } else {
-                logger.info('Status server disabled (STATUS_ENABLED=false)');
-            }
-
             // Login to Discord
             await this.client.login(process.env.DISCORD_TOKEN);
-            
-            // Initialize stats after login
-            this.initializeStats();
             
         } catch (error) {
             logger.error('Failed to initialize bot:', error);
@@ -113,72 +84,6 @@ class DiscordBot {
             logger.error('Error registering slash commands:', error);
             throw error;
         }
-    }
-
-    async initializeStats() {
-        try {
-            // Подсчитываем количество серверов
-            this.stats.servers = this.client.guilds.cache.size;
-            
-            // Подсчитываем общее количество пользователей
-            this.stats.users = this.client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
-            
-            // Получаем количество CS2 серверов из базы данных
-            const cs2Servers = await this.database.getAllServers();
-            this.stats.cs2Servers = cs2Servers.length;
-            
-            // Обновляем статистику в статус-сервере
-            await this.updateStatusStats();
-            
-            logger.info('Stats initialized successfully');
-        } catch (error) {
-            logger.error('Error initializing stats:', error);
-        }
-    }
-
-    async updateStatusStats() {
-        // Обновляем статистику только если статус-сервер включен
-        if (!this.statusServer) {
-            return;
-        }
-        
-        try {
-            const response = await fetch(`http://localhost:${process.env.STATUS_PORT || 3000}/api/update-stats`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(this.stats)
-            });
-            
-            if (!response.ok) {
-                logger.warn('Failed to update status stats');
-            }
-        } catch (error) {
-            logger.warn('Error updating status stats:', error);
-        }
-    }
-
-    incrementCommandUsage() {
-        this.stats.commandsUsed++;
-        this.updateStatusStats();
-    }
-
-    incrementFeatureUsage(feature) {
-        if (this.stats.features[feature] !== undefined) {
-            this.stats.features[feature]++;
-            this.updateStatusStats();
-        }
-    }
-
-    async updateServerStats() {
-        this.stats.servers = this.client.guilds.cache.size;
-        this.stats.users = this.client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
-        
-        const cs2Servers = await this.database.getAllServers();
-        this.stats.cs2Servers = cs2Servers.length;
-        
-        await this.updateStatusStats();
     }
 
     async shutdown() {

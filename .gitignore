@@ -15,9 +15,11 @@ yarn-error.log*
 logs/
 *.log
 
-# Status page data (only for public bot)
-data/bot_stats.json
-data/stats_history.json
+# Database
+data/
+*.db
+*.sqlite
+*.sqlite3
 
 # Runtime data
 pids/
