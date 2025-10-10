@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord CS2 Bot - Статус</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .status-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .status-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .card-icon {
+            font-size: 2.5rem;
+            margin-right: 15px;
+            color: #667eea;
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .card-value {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .card-description {
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-online {
+            background-color: #4CAF50;
+            animation: pulse 2s infinite;
+        }
+
+        .status-offline {
+            background-color: #f44336;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .chart-container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .chart-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            font-size: 1.2rem;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 4px solid white;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+            opacity: 0.8;
+        }
+
+        .footer a {
+            color: white;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        .last-update {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 10px;
+        }
+
+        .feature-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .feature-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .feature-name {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .feature-count {
+            font-size: 1.5rem;
+            color: #667eea;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-robot"></i> Discord CS2 Bot</h1>
+            <p>Статус работы и статистика использования</p>
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            Загрузка статистики...
+        </div>
+
+        <div id="content" style="display: none;">
+            <div class="status-grid">
+                <div class="status-card">
+                    <div class="card-header">
+                        <i class="fas fa-server card-icon"></i>
+                        <div class="card-title">Серверы Discord</div>
+                    </div>
+                    <div class="card-value" id="servers-count">-</div>
+                    <div class="card-description">Активные серверы с ботом</div>
+                </div>
+
+                <div class="status-card">
+                    <div class="card-header">
+                        <i class="fas fa-users card-icon"></i>
+                        <div class="card-title">Пользователи</div>
+                    </div>
+                    <div class="card-value" id="users-count">-</div>
+                    <div class="card-description">Общее количество пользователей</div>
+                </div>
+
+                <div class="status-card">
+                    <div class="card-header">
+                        <i class="fas fa-gamepad card-icon"></i>
+                        <div class="card-title">CS2 Серверы</div>
+                    </div>
+                    <div class="card-value" id="cs2-servers-count">-</div>
+                    <div class="card-description">Мониторинг CS2 серверов</div>
+                </div>
+
+                <div class="status-card">
+                    <div class="card-header">
+                        <i class="fas fa-terminal card-icon"></i>
+                        <div class="card-title">Команды</div>
+                    </div>
+                    <div class="card-value" id="commands-count">-</div>
+                    <div class="card-description">Использовано команд</div>
+                </div>
+
+                <div class="status-card">
+                    <div class="card-header">
+                        <i class="fas fa-clock card-icon"></i>
+                        <div class="card-title">Время работы</div>
+                    </div>
+                    <div class="card-value" id="uptime">-</div>
+                    <div class="card-description">Непрерывная работа</div>
+                </div>
+
+                <div class="status-card">
+                    <div class="card-header">
+                        <i class="fas fa-heartbeat card-icon"></i>
+                        <div class="card-title">Статус</div>
+                    </div>
+                    <div class="card-value">
+                        <span class="status-indicator status-online"></span>
+                        Онлайн
+                    </div>
+                    <div class="card-description">Бот работает нормально</div>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-title">Статистика функций</div>
+                <div class="feature-stats">
+                    <div class="feature-item">
+                        <div class="feature-name">Система уровней</div>
+                        <div class="feature-count" id="leveling-count">-</div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-name">Приветствия</div>
+                        <div class="feature-count" id="greetings-count">-</div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-name">Мониторинг CS2</div>
+                        <div class="feature-count" id="monitoring-count">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="last-update">
+                Последнее обновление: <span id="last-update-time">-</span>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>
+                <a href="https://github.com/patthsone/discord-cs2-bot" target="_blank">
+                    <i class="fab fa-github"></i> GitHub Repository
+                </a>
+                | 
+                <a href="https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_ID&permissions=8&scope=bot" target="_blank">
+                    <i class="fab fa-discord"></i> Добавить бота
+                </a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let statsData = {};
+
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                statsData = await response.json();
+                updateUI();
+            } catch (error) {
+                console.error('Error loading stats:', error);
+                document.getElementById('loading').innerHTML = 
+                    '<div style="color: #f44336;">Ошибка загрузки статистики</div>';
+            }
+        }
+
+        function updateUI() {
+            // Обновляем основные счетчики
+            document.getElementById('servers-count').textContent = statsData.servers || 0;
+            document.getElementById('users-count').textContent = statsData.users || 0;
+            document.getElementById('cs2-servers-count').textContent = statsData.cs2Servers || 0;
+            document.getElementById('commands-count').textContent = statsData.commandsUsed || 0;
+            
+            // Обновляем время работы
+            const uptime = statsData.uptime || 0;
+            const days = Math.floor(uptime / 86400);
+            const hours = Math.floor((uptime % 86400) / 3600);
+            const minutes = Math.floor((uptime % 3600) / 60);
+            
+            let uptimeText = '';
+            if (days > 0) uptimeText += `${days}д `;
+            if (hours > 0) uptimeText += `${hours}ч `;
+            uptimeText += `${minutes}м`;
+            
+            document.getElementById('uptime').textContent = uptimeText;
+            
+            // Обновляем статистику функций
+            document.getElementById('leveling-count').textContent = statsData.features?.leveling || 0;
+            document.getElementById('greetings-count').textContent = statsData.features?.greetings || 0;
+            document.getElementById('monitoring-count').textContent = statsData.features?.cs2Monitoring || 0;
+            
+            // Обновляем время последнего обновления
+            const lastUpdate = new Date(statsData.lastUpdate);
+            document.getElementById('last-update-time').textContent = 
+                lastUpdate.toLocaleString('ru-RU');
+            
+            // Показываем контент
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('content').style.display = 'block';
+        }
+
+        function formatNumber(num) {
+            return new Intl.NumberFormat('ru-RU').format(num);
+        }
+
+        // Загружаем статистику при загрузке страницы
+        loadStats();
+        
+        // Обновляем каждые 30 секунд
+        setInterval(loadStats, 30000);
+    </script>
+</body>
+</html>
