@@ -10,6 +10,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
     
     steps:
     - name: Checkout code
@@ -38,28 +43,8 @@ jobs:
         npm install -g pm2
         pm2 --version
         
-    - name: Check deployment secrets
-      run: |
-        if [ -z "${{ secrets.DEPLOY_HOST }}" ] || [ -z "${{ secrets.DEPLOY_USER }}" ] || [ -z "${{ secrets.DEPLOY_KEY }}" ] || [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
-          echo "⚠️ Deployment secrets not configured. Skipping deployment."
-          echo "Please configure the following secrets in GitHub repository settings:"
-          echo "- DEPLOY_HOST"
-          echo "- DEPLOY_USER" 
-          echo "- DEPLOY_KEY"
-          echo "- DEPLOY_PATH"
-          echo "See GITHUB_ACTIONS_SETUP.md for detailed instructions."
-          exit 0
-        else
-          echo "✅ Deployment secrets configured. Proceeding with deployment."
-        fi
-        
     - name: Deploy to server
-      if: secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_KEY != '' && secrets.DEPLOY_PATH != ''
-      env:
-        DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-        DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-        DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
-        DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      if: ${{ env.DEPLOY_HOST != '' && env.DEPLOY_USER != '' && env.DEPLOY_KEY != '' && env.DEPLOY_PATH != '' }}
       run: |
         # Создаем SSH ключ
         echo "$DEPLOY_KEY" > deploy_key
@@ -88,21 +73,27 @@ jobs:
   docker-build:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    env:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
     - name: Set up Docker Buildx
+      if: ${{ env.DOCKER_USERNAME != '' && env.DOCKER_PASSWORD != '' }}
       uses: docker/setup-buildx-action@v3
       
     - name: Login to Docker Hub
+      if: ${{ env.DOCKER_USERNAME != '' && env.DOCKER_PASSWORD != '' }}
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
         
     - name: Extract metadata
+      if: ${{ env.DOCKER_USERNAME != '' && env.DOCKER_PASSWORD != '' }}
       id: meta
       uses: docker/metadata-action@v5
       with:
@@ -115,6 +106,7 @@ jobs:
           type=raw,value=latest,enable={{is_default_branch}}
           
     - name: Build and push Docker image
+      if: ${{ env.DOCKER_USERNAME != '' && env.DOCKER_PASSWORD != '' }}
       uses: docker/build-push-action@v5
       with:
         context: .

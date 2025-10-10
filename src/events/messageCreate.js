@@ -8,7 +8,12 @@ module.exports = {
         try {
             await bot.levelingSystem.handleMessage(message);
         } catch (error) {
-            logger.error('Error handling message for leveling:', error);
+            // Only log leveling errors as warnings to reduce noise
+            logger.warn('Error handling message for leveling:', {
+                error: error.message,
+                user: message.author.tag,
+                guild: message.guild?.name || 'DM'
+            });
         }
     },
 };

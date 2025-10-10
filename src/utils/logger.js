@@ -39,9 +39,10 @@ const winstonLogger = winston.createLogger({
     ]
 });
 
-// Add console transport for development
+// Add console transport for development (only important messages)
 if (process.env.NODE_ENV !== 'production') {
     winstonLogger.add(new winston.transports.Console({
+        level: 'warn', // Only show warnings and errors in console
         format: winston.format.combine(
             winston.format.colorize(),
             winston.format.simple()
@@ -49,17 +50,10 @@ if (process.env.NODE_ENV !== 'production') {
     }));
 }
 
-// Pino logger for high-performance logging
+// Pino logger for high-performance logging (file only, no console output)
 const pinoLogger = pino({
     level: process.env.LOG_LEVEL || 'info',
-    transport: process.env.NODE_ENV !== 'production' ? {
-        target: 'pino-pretty',
-        options: {
-            colorize: true,
-            translateTime: 'SYS:standard',
-            ignore: 'pid,hostname'
-        }
-    } : undefined
+    transport: undefined // Disable console output for Pino
 }, pino.destination(path.join(logsDir, 'pino.log')));
 
 class Logger {

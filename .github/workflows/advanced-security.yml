@@ -8,7 +8,6 @@ on:
 jobs:
   advanced-security:
     runs-on: ubuntu-latest
-    if: secrets.SNYK_TOKEN != ''
     
     steps:
     - name: Checkout code
@@ -23,8 +22,18 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
+    - name: Check for Snyk token
+      id: check-snyk-token
+      run: |
+        if [ -n "${{ secrets.SNYK_TOKEN }}" ]; then
+          echo "token-exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "token-exists=false" >> $GITHUB_OUTPUT
+        fi
+        
     - name: Run Snyk security scan
       uses: snyk/actions/node@master
+      if: steps.check-snyk-token.outputs.token-exists == 'true'
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       with:
@@ -45,5 +54,5 @@ jobs:
           echo "- ✅ Snyk scan completed" >> $GITHUB_STEP_SUMMARY
           echo "- 📊 Results uploaded to GitHub Security tab" >> $GITHUB_STEP_SUMMARY
         else
-          echo "- ⚠️ Snyk scan failed or no issues found" >> $GITHUB_STEP_SUMMARY
+          echo "- ⚠️ Snyk scan skipped (SNYK_TOKEN not configured) or no issues found" >> $GITHUB_STEP_SUMMARY
         fi
