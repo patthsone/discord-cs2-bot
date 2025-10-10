@@ -17,11 +17,21 @@ class GreetingSystem {
 
     async handleNewMember(member) {
         try {
+            // Get guild settings
+            const settings = await this.getGreetingSettings(member.guild.id);
+            
+            if (!settings || !settings.isActive) {
+                logger.debug(`Greeting system disabled for guild ${member.guild.id}`);
+                return;
+            }
+            
             // Assign default role if configured
-            await this.assignDefaultRole(member);
+            if (settings.autoRoleId) {
+                await this.assignDefaultRole(member, settings.autoRoleId);
+            }
             
             // Send greeting message
-            await this.sendGreetingMessage(member);
+            await this.sendGreetingMessage(member, settings);
             
             logger.info(`Greeted new member: ${member.user.tag}`);
         } catch (error) {
@@ -29,18 +39,11 @@ class GreetingSystem {
         }
     }
 
-    async assignDefaultRole(member) {
-        const defaultRoleId = this.config.get('roles.default');
-        
-        if (!defaultRoleId) {
-            logger.warn('No default role configured');
-            return;
-        }
-
+    async assignDefaultRole(member, roleId) {
         try {
-            const role = member.guild.roles.cache.get(defaultRoleId);
+            const role = member.guild.roles.cache.get(roleId);
             if (!role) {
-                logger.warn(`Default role not found: ${defaultRoleId}`);
+                logger.warn(`Default role not found: ${roleId}`);
                 return;
             }
 
@@ -51,8 +54,8 @@ class GreetingSystem {
         }
     }
 
-    async sendGreetingMessage(member) {
-        const greetingChannelId = this.config.get('channels.greeting');
+    async sendGreetingMessage(member, settings) {
+        const greetingChannelId = settings.welcomeChannelId;
         
         if (!greetingChannelId) {
             logger.warn('No greeting channel configured');
@@ -66,16 +69,22 @@ class GreetingSystem {
                 return;
             }
 
-            // Get a random greeting message
-            const randomMessage = this.greetingMessages[
-                Math.floor(Math.random() * this.greetingMessages.length)
-            ].replace('{user}', member.user.toString());
+            // Use custom message if available, otherwise use random default
+            let message;
+            if (settings.welcomeMessage) {
+                message = settings.welcomeMessage.replace('{user}', member.user.toString());
+            } else {
+                const randomMessage = this.greetingMessages[
+                    Math.floor(Math.random() * this.greetingMessages.length)
+                ].replace('{user}', member.user.toString());
+                message = randomMessage;
+            }
 
             // Create welcome embed
-            const welcomeEmbed = this.createWelcomeEmbed(member, randomMessage);
+            const welcomeEmbed = this.createWelcomeEmbed(member, message);
             
             await channel.send({ 
-                content: randomMessage,
+                content: message,
                 embeds: [welcomeEmbed]
             });
 
@@ -116,41 +125,169 @@ class GreetingSystem {
         return embed;
     }
 
-    async setCustomGreetingMessage(guildId, message) {
+    async setGreetingSettings(guildId, settings) {
         try {
-            await this.bot.database.run(
-                'INSERT OR REPLACE INTO greeting_messages (guild_id, message, is_active) VALUES (?, ?, 1)',
-                [guildId, message]
-            );
-            logger.info(`Set custom greeting message for guild ${guildId}`);
+            const result = await this.bot.database.setGreetingSettings(guildId, {
+                welcomeChannelId: settings.welcomeChannelId,
+                welcomeMessage: settings.welcomeMessage,
+                autoRoleId: settings.autoRoleId,
+                isActive: settings.isActive !== false
+            });
+            
+            // Invalidate cache
+            await this.bot.cache.invalidateGuildSettings(guildId);
+            
+            logger.info(`Set greeting settings for guild ${guildId}`);
+            return result;
         } catch (error) {
-            logger.error('Error setting custom greeting message:', error);
+            logger.error('Error setting greeting settings:', error);
             throw error;
         }
     }
 
-    async getCustomGreetingMessage(guildId) {
+    async getGreetingSettings(guildId) {
         try {
-            const result = await this.bot.database.get(
-                'SELECT message FROM greeting_messages WHERE guild_id = ? AND is_active = 1',
-                [guildId]
-            );
-            return result ? result.message : null;
+            // Check cache first
+            let settings = await this.bot.cache.getGuildSettings(guildId);
+            
+            if (!settings || !settings.greetingSettings) {
+                // Get from database
+                settings = await this.bot.database.getGreetingSettings(guildId);
+                
+                if (settings) {
+                    // Cache the result
+                    await this.bot.cache.setGuildSettings(guildId, { greetingSettings: settings });
+                }
+            } else {
+                settings = settings.greetingSettings;
+            }
+            
+            return settings;
         } catch (error) {
-            logger.error('Error getting custom greeting message:', error);
+            logger.error('Error getting greeting settings:', error);
             return null;
         }
     }
 
-    async removeCustomGreetingMessage(guildId) {
+    async removeGreetingSettings(guildId) {
         try {
-            await this.bot.database.run(
-                'UPDATE greeting_messages SET is_active = 0 WHERE guild_id = ?',
+            await this.bot.database.query(
+                'DELETE FROM greeting_settings WHERE guild_id = ?',
                 [guildId]
             );
-            logger.info(`Removed custom greeting message for guild ${guildId}`);
+            
+            // Invalidate cache
+            await this.bot.cache.invalidateGuildSettings(guildId);
+            
+            logger.info(`Removed greeting settings for guild ${guildId}`);
         } catch (error) {
-            logger.error('Error removing custom greeting message:', error);
+            logger.error('Error removing greeting settings:', error);
+            throw error;
+        }
+    }
+
+    async toggleGreetingSystem(guildId, isActive) {
+        try {
+            await this.bot.database.query(
+                'UPDATE greeting_settings SET is_active = ? WHERE guild_id = ?',
+                [isActive, guildId]
+            );
+            
+            // Invalidate cache
+            await this.bot.cache.invalidateGuildSettings(guildId);
+            
+            logger.info(`Toggled greeting system for guild ${guildId}: ${isActive ? 'enabled' : 'disabled'}`);
+        } catch (error) {
+            logger.error('Error toggling greeting system:', error);
+            throw error;
+        }
+    }
+
+    async updateWelcomeChannel(guildId, channelId) {
+        try {
+            await this.bot.database.query(
+                `INSERT INTO greeting_settings (guild_id, welcome_channel_id, is_active)
+                 VALUES (?, ?, 1)
+                 ON DUPLICATE KEY UPDATE welcome_channel_id = VALUES(welcome_channel_id)`,
+                [guildId, channelId]
+            );
+            
+            // Invalidate cache
+            await this.bot.cache.invalidateGuildSettings(guildId);
+            
+            logger.info(`Updated welcome channel for guild ${guildId}: ${channelId}`);
+        } catch (error) {
+            logger.error('Error updating welcome channel:', error);
+            throw error;
+        }
+    }
+
+    async updateWelcomeMessage(guildId, message) {
+        try {
+            await this.bot.database.query(
+                `INSERT INTO greeting_settings (guild_id, welcome_message, is_active)
+                 VALUES (?, ?, 1)
+                 ON DUPLICATE KEY UPDATE welcome_message = VALUES(welcome_message)`,
+                [guildId, message]
+            );
+            
+            // Invalidate cache
+            await this.bot.cache.invalidateGuildSettings(guildId);
+            
+            logger.info(`Updated welcome message for guild ${guildId}`);
+        } catch (error) {
+            logger.error('Error updating welcome message:', error);
+            throw error;
+        }
+    }
+
+    async updateAutoRole(guildId, roleId) {
+        try {
+            await this.bot.database.query(
+                `INSERT INTO greeting_settings (guild_id, auto_role_id, is_active)
+                 VALUES (?, ?, 1)
+                 ON DUPLICATE KEY UPDATE auto_role_id = VALUES(auto_role_id)`,
+                [guildId, roleId]
+            );
+            
+            // Invalidate cache
+            await this.bot.cache.invalidateGuildSettings(guildId);
+            
+            logger.info(`Updated auto role for guild ${guildId}: ${roleId}`);
+        } catch (error) {
+            logger.error('Error updating auto role:', error);
+            throw error;
+        }
+    }
+
+    // Test greeting message
+    async testGreeting(member, settings) {
+        try {
+            const channel = member.guild.channels.cache.get(settings.welcomeChannelId);
+            if (!channel) {
+                throw new Error('Welcome channel not found');
+            }
+
+            let message;
+            if (settings.welcomeMessage) {
+                message = settings.welcomeMessage.replace('{user}', member.user.toString());
+            } else {
+                const randomMessage = this.greetingMessages[
+                    Math.floor(Math.random() * this.greetingMessages.length)
+                ].replace('{user}', member.user.toString());
+                message = randomMessage;
+            }
+
+            const welcomeEmbed = this.createWelcomeEmbed(member, message);
+            
+            await channel.send({ 
+                content: `🧪 **Test Greeting**\n${message}`,
+                embeds: [welcomeEmbed]
+            });
+
+            return true;
+        } catch (error) {
+            logger.error('Error testing greeting:', error);
             throw error;
         }
     }

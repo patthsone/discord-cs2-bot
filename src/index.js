@@ -1,7 +1,8 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, Collection, EmbedBuilder, REST, Routes } = require('discord.js');
 const logger = require('./utils/logger');
-const Database = require('./database/database');
+const Database = require('./database/mysqlDatabase');
+const CacheService = require('./services/cacheService');
 const CS2Monitor = require('./services/cs2Monitor');
 const LevelingSystem = require('./services/levelingSystem');
 const GreetingSystem = require('./services/greetingSystem');
@@ -24,6 +25,7 @@ class DiscordBot {
 
         this.commands = new Collection();
         this.database = new Database();
+        this.cache = new CacheService();
         this.cs2Monitor = new CS2Monitor(this);
         this.levelingSystem = new LevelingSystem(this);
         this.greetingSystem = new GreetingSystem(this);
@@ -35,6 +37,13 @@ class DiscordBot {
 
     async initializeBot() {
         try {
+            // Set database reference for logger
+            logger.setDatabase(this.database);
+
+            // Initialize cache service
+            await this.cache.initialize();
+            logger.info('Cache service initialized successfully');
+
             // Initialize database
             await this.database.initialize();
             logger.info('Database initialized successfully');
@@ -52,8 +61,14 @@ class DiscordBot {
             this.cs2Monitor.startMonitoring();
             logger.info('CS2 monitoring started');
 
+            // Start cleanup tasks
+            this.startCleanupTasks();
+
             // Login to Discord
             await this.client.login(process.env.DISCORD_TOKEN);
+            
+            // Log bot start
+            await logger.logBotStart();
             
         } catch (error) {
             logger.error('Failed to initialize bot:', error);
@@ -86,11 +101,61 @@ class DiscordBot {
         }
     }
 
+    startCleanupTasks() {
+        // Cleanup old server history every 6 hours
+        setInterval(async () => {
+            try {
+                await this.cs2Monitor.cleanupOldHistory();
+            } catch (error) {
+                logger.error('Error in server history cleanup:', error);
+            }
+        }, 6 * 60 * 60 * 1000); // 6 hours
+
+        // Cleanup old logs every 24 hours
+        setInterval(async () => {
+            try {
+                await logger.cleanupOldLogs(7); // Keep logs for 7 days
+            } catch (error) {
+                logger.error('Error in log cleanup:', error);
+            }
+        }, 24 * 60 * 60 * 1000); // 24 hours
+
+        // Cache cleanup every hour
+        setInterval(async () => {
+            try {
+                // Clear expired cache entries (Redis handles this automatically)
+                logger.debug('Cache cleanup completed');
+            } catch (error) {
+                logger.error('Error in cache cleanup:', error);
+            }
+        }, 60 * 60 * 1000); // 1 hour
+
+        logger.info('Cleanup tasks started');
+    }
+
     async shutdown() {
         logger.info('Shutting down bot...');
-        this.cs2Monitor.stopMonitoring();
-        await this.database.close();
-        this.client.destroy();
+        
+        try {
+            // Log bot stop
+            await logger.logBotStop();
+            
+            // Stop monitoring
+            this.cs2Monitor.stopMonitoring();
+            
+            // Close cache connection
+            await this.cache.close();
+            
+            // Close database connections
+            await this.database.close();
+            
+            // Destroy Discord client
+            this.client.destroy();
+            
+            logger.info('Bot shutdown completed');
+        } catch (error) {
+            logger.error('Error during shutdown:', error);
+        }
     }
 }
 

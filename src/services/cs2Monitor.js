@@ -1,4 +1,4 @@
-const axios = require('axios');
+const GameDig = require('gamedig');
 const cron = require('node-cron');
 const { EmbedBuilder } = require('discord.js');
 const logger = require('../utils/logger');
@@ -11,6 +11,7 @@ class CS2Monitor {
         this.monitoringMessages = new Map(); // Store last message for each server
         this.isMonitoring = false;
         this.cronJob = null;
+        this.queryTimeout = parseInt(process.env.SERVER_QUERY_TIMEOUT) || 5000;
     }
 
     startMonitoring() {
@@ -20,7 +21,7 @@ class CS2Monitor {
         }
 
         this.isMonitoring = true;
-        const updateInterval = this.config.get('cs2.updateInterval');
+        const updateInterval = this.config.get('cs2.updateInterval') || 10;
         
         // Schedule monitoring task
         this.cronJob = cron.schedule(`*/${updateInterval} * * * *`, async () => {
@@ -48,23 +49,32 @@ class CS2Monitor {
     async updateAllServers() {
         try {
             // Get all active servers from database
-            const servers = await this.bot.database.all(
-                'SELECT * FROM servers WHERE is_active = 1'
-            );
+            const servers = await this.bot.database.getMonitoredServers();
 
             if (servers.length === 0) {
                 logger.debug('No active servers to monitor');
                 return;
             }
 
-            // Update each server
-            for (const server of servers) {
-                try {
-                    await this.updateServerStatus(server);
-                } catch (error) {
-                    logger.error(`Error updating server ${server.server_name}:`, error);
+            logger.info(`Updating ${servers.length} servers in parallel`);
+
+            // Update all servers in parallel using Promise.allSettled
+            const updatePromises = servers.map(server => this.updateServerStatus(server));
+            const results = await Promise.allSettled(updatePromises);
+
+            // Log results
+            const successful = results.filter(result => result.status === 'fulfilled').length;
+            const failed = results.filter(result => result.status === 'rejected').length;
+            
+            logger.info(`Server update completed: ${successful} successful, ${failed} failed`);
+
+            // Log any failures
+            results.forEach((result, index) => {
+                if (result.status === 'rejected') {
+                    logger.error(`Failed to update server ${servers[index].customName || servers[index].serverIp}:`, result.reason);
                 }
-            }
+            });
+
         } catch (error) {
             logger.error('Error updating all servers:', error);
         }
@@ -72,70 +82,71 @@ class CS2Monitor {
 
     async updateServerStatus(server) {
         try {
-            const serverData = await this.getServerInfo(server);
+            // Check cache first
+            const cachedStatus = await this.bot.cache.getServerStatus(server.id);
+            if (cachedStatus && this.isCacheValid(cachedStatus)) {
+                logger.debug(`Using cached status for server ${server.customName || server.serverIp}`);
+                await this.sendStatusUpdate(server, cachedStatus);
+                return;
+            }
+
+            // Query server using gamedig
+            const serverData = await this.queryServerWithGamedig(server);
+            
+            // Cache the result
+            await this.bot.cache.setServerStatus(server.id, serverData, 60);
+            
+            // Send status update
             await this.sendStatusUpdate(server, serverData);
+            
+            // Save to database
             await this.saveServerStatus(server, serverData);
+            
+            // Add to history
+            await this.addServerHistory(server, serverData);
+
         } catch (error) {
-            logger.error(`Error updating server ${server.server_name}:`, error);
+            logger.error(`Error updating server ${server.customName || server.serverIp}:`, error);
             await this.sendErrorUpdate(server, error.message);
         }
     }
 
-    async getServerInfo(server) {
+    async queryServerWithGamedig(server) {
         try {
-            // Using Steam Web API for server info
-            const response = await axios.get('https://api.steampowered.com/IGameServersService/GetServerList/v1/', {
-                params: {
-                    key: process.env.STEAM_API_KEY || 'demo', // You'll need a Steam API key
-                    filter: `addr\\${server.server_ip}:${server.server_port}`,
-                    limit: 1
-                },
-                timeout: 10000
-            });
+            const options = {
+                type: 'cs2',
+                host: server.serverIp,
+                port: server.serverPort,
+                timeout: this.queryTimeout,
+                socketTimeout: this.queryTimeout,
+                attemptTimeout: this.queryTimeout,
+                maxAttempts: 2
+            };
 
-            if (response.data.response && response.data.response.servers && response.data.response.servers.length > 0) {
-                const serverData = response.data.response.servers[0];
-                return {
-                    status: 'online',
-                    name: serverData.name || server.server_name,
-                    map: serverData.map || 'Unknown Map',
-                    players: serverData.players || 0,
-                    maxPlayers: serverData.max_players || 0,
-                    game: serverData.game || 'Counter-Strike 2',
-                    version: serverData.version || 'Unknown',
-                    ping: serverData.ping || 0,
-                    lastSeen: new Date().toISOString()
-                };
-            } else {
-                // Fallback: try direct server query
-                return await this.queryServerDirectly(server);
-            }
-        } catch (error) {
-            logger.warn(`Steam API failed for ${server.server_name}, trying direct query:`, error.message);
-            return await this.queryServerDirectly(server);
-        }
-    }
+            logger.debug(`Querying server ${server.serverIp}:${server.serverPort} with gamedig`);
 
-    async queryServerDirectly(server) {
-        try {
-            // This is a simplified version - in a real implementation, you'd use
-            // a library like 'steam-server-query' or implement the Source Query protocol
-            // For now, we'll return a basic online status
+            const state = await GameDig.query(options);
+            
             return {
                 status: 'online',
-                name: server.server_name,
-                map: 'Unknown Map',
-                players: 0,
-                maxPlayers: 0,
-                game: 'Counter-Strike 2',
-                version: 'Unknown',
-                ping: 0,
-                lastSeen: new Date().toISOString()
+                name: state.name || server.customName || `${server.serverIp}:${server.serverPort}`,
+                map: state.map || 'Unknown Map',
+                players: state.players ? state.players.length : 0,
+                maxPlayers: state.maxplayers || 0,
+                game: state.game || 'Counter-Strike 2',
+                version: state.version || 'Unknown',
+                ping: state.ping || 0,
+                lastSeen: new Date().toISOString(),
+                raw: state // Store raw data for debugging
             };
+
         } catch (error) {
+            logger.warn(`Gamedig query failed for ${server.serverIp}:${server.serverPort}:`, error.message);
+            
+            // Return offline status
             return {
                 status: 'offline',
-                name: server.server_name,
+                name: server.customName || `${server.serverIp}:${server.serverPort}`,
                 map: 'N/A',
                 players: 0,
                 maxPlayers: 0,
@@ -148,10 +159,21 @@ class CS2Monitor {
         }
     }
 
+    isCacheValid(cachedData) {
+        if (!cachedData || !cachedData.lastSeen) {
+            return false;
+        }
+        
+        const cacheAge = Date.now() - new Date(cachedData.lastSeen).getTime();
+        const maxCacheAge = 60000; // 1 minute
+        
+        return cacheAge < maxCacheAge;
+    }
+
     async sendStatusUpdate(server, serverData) {
-        const channelId = server.monitoring_channel_id;
+        const channelId = server.channelId;
         if (!channelId) {
-            logger.warn(`No monitoring channel configured for server ${server.server_name}`);
+            logger.warn(`No monitoring channel configured for server ${server.customName || server.serverIp}`);
             return;
         }
 
@@ -163,7 +185,7 @@ class CS2Monitor {
             }
 
             const embed = this.createServerStatusEmbed(server, serverData);
-            const messageKey = `${server.server_id}`;
+            const messageKey = `${server.id}`;
             
             if (this.monitoringMessages.has(messageKey)) {
                 try {
@@ -180,12 +202,12 @@ class CS2Monitor {
             }
 
         } catch (error) {
-            logger.error(`Error sending status update for ${server.server_name}:`, error);
+            logger.error(`Error sending status update for ${server.customName || server.serverIp}:`, error);
         }
     }
 
     async sendErrorUpdate(server, errorMessage) {
-        const channelId = server.monitoring_channel_id;
+        const channelId = server.channelId;
         if (!channelId) return;
 
         try {
@@ -193,12 +215,12 @@ class CS2Monitor {
             if (!channel) return;
 
             const embed = new EmbedBuilder()
-                .setTitle(`🚨 CS2 Server Monitoring Error - ${server.server_name}`)
+                .setTitle(`🚨 CS2 Server Monitoring Error - ${server.customName || server.serverIp}`)
                 .setDescription(`Failed to get server status: ${errorMessage}`)
                 .setColor(0xff0000)
                 .setTimestamp();
 
-            const messageKey = `${server.server_id}`;
+            const messageKey = `${server.id}`;
             
             if (this.monitoringMessages.has(messageKey)) {
                 try {
@@ -214,7 +236,7 @@ class CS2Monitor {
             }
 
         } catch (error) {
-            logger.error(`Error sending error update for ${server.server_name}:`, error);
+            logger.error(`Error sending error update for ${server.customName || server.serverIp}:`, error);
         }
     }
 
@@ -223,7 +245,7 @@ class CS2Monitor {
         const statusEmoji = serverData.status === 'online' ? '🟢' : '🔴';
         
         const embed = new EmbedBuilder()
-            .setTitle(`${statusEmoji} CS2 Server Status - ${server.server_name}`)
+            .setTitle(`${statusEmoji} CS2 Server Status - ${server.customName || server.serverIp}`)
             .setColor(statusColor)
             .addFields(
                 {
@@ -258,7 +280,7 @@ class CS2Monitor {
                 }
             )
             .setTimestamp()
-            .setFooter({ text: `Server: ${server.server_ip}:${server.server_port}` });
+            .setFooter({ text: `Server: ${server.serverIp}:${server.serverPort}` });
 
         if (serverData.status === 'online' && serverData.ping > 0) {
             embed.addFields({
@@ -281,40 +303,76 @@ class CS2Monitor {
 
     async saveServerStatus(server, serverData) {
         try {
-            await this.bot.database.run(
-                `INSERT INTO server_status 
-                (server_id, guild_id, server_ip, server_port, status, player_count, max_players, map_name, server_name, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    server.server_id,
-                    server.guild_id,
-                    server.server_ip,
-                    server.server_port,
-                    serverData.status,
-                    serverData.players,
-                    serverData.maxPlayers,
-                    serverData.map,
-                    serverData.name,
-                    new Date().toISOString()
-                ]
-            );
+            await this.bot.database.updateServerStatus(server.id, {
+                online: serverData.status === 'online',
+                playersOnline: serverData.players,
+                mapName: serverData.map
+            });
         } catch (error) {
-            logger.error(`Error saving server status for ${server.server_name}:`, error);
+            logger.error(`Error saving server status for ${server.customName || server.serverIp}:`, error);
+        }
+    }
+
+    async addServerHistory(server, serverData) {
+        try {
+            await this.bot.database.addServerHistory(server.id, {
+                online: serverData.status === 'online',
+                playersOnline: serverData.players,
+                mapName: serverData.map,
+                ping: serverData.ping
+            });
+        } catch (error) {
+            logger.error(`Error adding server history for ${server.customName || server.serverIp}:`, error);
         }
     }
 
     async getServerHistory(serverId, limit = 10) {
         try {
-            return await this.bot.database.all(
-                `SELECT * FROM server_status 
+            return await this.bot.database.query(
+                `SELECT * FROM server_history 
                 WHERE server_id = ?
-                ORDER BY last_updated DESC 
+                ORDER BY created_at DESC 
                 LIMIT ?`,
                 [serverId, limit]
             );
         } catch (error) {
             logger.error('Error getting server history:', error);
             return [];
+        }
+    }
+
+    async cleanupOldHistory() {
+        try {
+            const cleanedCount = await this.bot.database.cleanupOldHistory(30);
+            logger.info(`Cleaned up ${cleanedCount} old server history entries`);
+        } catch (error) {
+            logger.error('Error cleaning up old server history:', error);
+        }
+    }
+
+    // Manual server query for testing
+    async queryServer(serverIp, serverPort) {
+        try {
+            const options = {
+                type: 'cs2',
+                host: serverIp,
+                port: serverPort,
+                timeout: this.queryTimeout,
+                socketTimeout: this.queryTimeout,
+                attemptTimeout: this.queryTimeout,
+                maxAttempts: 2
+            };
+
+            const state = await GameDig.query(options);
+            return {
+                success: true,
+                data: state
+            };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message
+            };
         }
     }
 }

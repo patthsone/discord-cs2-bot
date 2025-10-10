@@ -28,8 +28,8 @@ class LevelingSystem {
         this.xpCooldowns.set(cooldownKey, Date.now());
         
         try {
-            await this.addXP(userId, guildId, this.config.get('leveling.xpPerMessage'));
-            await this.updateMessageCount(userId, guildId);
+            const xpPerMessage = this.config.get('leveling.xpPerMessage') || 15;
+            await this.addUserXP(userId, guildId, xpPerMessage, 1);
         } catch (error) {
             logger.error('Error handling message XP:', error);
         }
@@ -58,75 +58,88 @@ class LevelingSystem {
         }
     }
 
-    async addXP(userId, guildId, amount) {
+    async addUserXP(userId, guildId, xpToAdd, messageCount = 0) {
         try {
-            // Get or create user record
-            let user = await this.getUser(userId, guildId);
+            // Check cache first
+            let userLevel = await this.bot.cache.getUserLevel(userId, guildId);
             
-            if (!user) {
-                user = await this.createUser(userId, guildId);
+            if (!userLevel) {
+                // Get from database
+                userLevel = await this.bot.database.getUserLevel(userId, guildId);
+                
+                if (!userLevel) {
+                    // Create new user
+                    userLevel = await this.bot.database.createUserLevel(userId, guildId);
+                }
+                
+                // Cache the user level
+                await this.bot.cache.setUserLevel(userId, guildId, userLevel);
             }
-            
-            const oldLevel = user.level;
-            const newXP = user.xp + amount;
+
+            const oldLevel = userLevel.level;
+            const newXP = Number(userLevel.xp) + xpToAdd;
             const newLevel = this.calculateLevel(newXP);
             
-            // Update user XP and level
-            await this.bot.database.run(
-                'UPDATE users SET xp = ?, level = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND guild_id = ?',
-                [newXP, newLevel, userId, guildId]
-            );
+            // Update user XP and level in database
+            await this.bot.database.updateUserXP(userId, guildId, xpToAdd, messageCount);
             
-            // Check for level up
             if (newLevel > oldLevel) {
+                // Update level in database
+                await this.bot.database.updateUserLevel(userId, guildId, newLevel);
+                
+                // Invalidate cache
+                await this.bot.cache.invalidateUserLevel(userId, guildId);
+                await this.bot.cache.invalidateLeaderboard(guildId);
+                
+                // Handle level up
                 await this.handleLevelUp(userId, guildId, newLevel, oldLevel);
+            } else {
+                // Update cache with new XP
+                userLevel.xp = newXP;
+                await this.bot.cache.setUserLevel(userId, guildId, userLevel);
             }
             
         } catch (error) {
-            logger.error('Error adding XP:', error);
+            logger.error('Error adding user XP:', error);
             throw error;
         }
     }
 
     async addVoiceXP(userId, guildId, minutes) {
-        const xpPerMinute = this.config.get('leveling.xpPerVoiceMinute');
+        const xpPerMinute = this.config.get('leveling.xpPerVoiceMinute') || 5;
         const totalXP = minutes * xpPerMinute;
         
         if (totalXP > 0) {
-            await this.addXP(userId, guildId, totalXP);
+            await this.addUserXP(userId, guildId, totalXP);
             await this.updateVoiceTime(userId, guildId, minutes);
         }
     }
 
     async getUser(userId, guildId) {
         try {
-            return await this.bot.database.get(
-                'SELECT * FROM users WHERE user_id = ? AND guild_id = ?',
-                [userId, guildId]
-            );
+            // Check cache first
+            let userLevel = await this.bot.cache.getUserLevel(userId, guildId);
+            
+            if (!userLevel) {
+                // Get from database
+                userLevel = await this.bot.database.getUserLevel(userId, guildId);
+                
+                if (userLevel) {
+                    // Cache the result
+                    await this.bot.cache.setUserLevel(userId, guildId, userLevel);
+                }
+            }
+            
+            return userLevel;
         } catch (error) {
             logger.error('Error getting user:', error);
             return null;
         }
     }
 
-    async createUser(userId, guildId) {
-        try {
-            await this.bot.database.run(
-                'INSERT INTO users (user_id, guild_id, xp, level) VALUES (?, ?, 0, 1)',
-                [userId, guildId]
-            );
-            
-            return await this.getUser(userId, guildId);
-        } catch (error) {
-            logger.error('Error creating user:', error);
-            throw error;
-        }
-    }
-
     calculateLevel(xp) {
-        const multiplier = this.config.get('leveling.levelMultiplier');
-        const maxLevel = this.config.get('leveling.maxLevel');
+        const multiplier = this.config.get('leveling.levelMultiplier') || 1.2;
+        const maxLevel = this.config.get('leveling.maxLevel') || 100;
         
         // Level calculation: level = floor(sqrt(xp / 100) * multiplier)
         const level = Math.floor(Math.sqrt(xp / 100) * multiplier);
@@ -135,7 +148,7 @@ class LevelingSystem {
     }
 
     calculateXPForLevel(level) {
-        const multiplier = this.config.get('leveling.levelMultiplier');
+        const multiplier = this.config.get('leveling.levelMultiplier') || 1.2;
         return Math.floor(Math.pow(level / multiplier, 2) * 100);
     }
 
@@ -201,33 +214,34 @@ class LevelingSystem {
     }
 
     async assignLevelRole(member, level) {
-        const levelRoles = this.config.get('roles.levelRoles');
-        if (!levelRoles || Object.keys(levelRoles).length === 0) return;
-        
         try {
+            // Get level rewards from database
+            const levelRewards = await this.bot.database.getLevelRewards(member.guild.id);
+            
+            if (!levelRewards || levelRewards.length === 0) {
+                logger.debug('No level rewards configured for this guild');
+                return;
+            }
+            
             // Find the highest role level the user qualifies for
-            const qualifiedLevels = Object.keys(levelRoles)
-                .map(Number)
-                .filter(roleLevel => level >= roleLevel)
-                .sort((a, b) => b - a);
+            const qualifiedLevels = levelRewards
+                .filter(reward => level >= reward.level)
+                .sort((a, b) => b.level - a.level);
             
             if (qualifiedLevels.length === 0) return;
             
-            const targetLevel = qualifiedLevels[0];
-            const roleId = levelRoles[targetLevel.toString()];
+            const targetReward = qualifiedLevels[0];
             
-            if (!roleId) return;
-            
-            const role = member.guild.roles.cache.get(roleId);
+            const role = member.guild.roles.cache.get(targetReward.roleId);
             if (!role) {
-                logger.warn(`Level role not found: ${roleId}`);
+                logger.warn(`Level role not found: ${targetReward.roleId}`);
                 return;
             }
             
             // Remove other level roles
-            for (const [levelStr, roleIdToCheck] of Object.entries(levelRoles)) {
-                if (parseInt(levelStr) !== targetLevel) {
-                    const roleToRemove = member.guild.roles.cache.get(roleIdToCheck);
+            for (const reward of levelRewards) {
+                if (reward.level !== targetReward.level) {
+                    const roleToRemove = member.guild.roles.cache.get(reward.roleId);
                     if (roleToRemove && member.roles.cache.has(roleToRemove.id)) {
                         await member.roles.remove(roleToRemove);
                     }
@@ -237,7 +251,7 @@ class LevelingSystem {
             // Add the new role if not already present
             if (!member.roles.cache.has(role.id)) {
                 await member.roles.add(role);
-                logger.info(`Assigned level ${targetLevel} role to ${member.user.tag}`);
+                logger.info(`Assigned level ${targetReward.level} role to ${member.user.tag}`);
             }
             
         } catch (error) {
@@ -245,21 +259,10 @@ class LevelingSystem {
         }
     }
 
-    async updateMessageCount(userId, guildId) {
-        try {
-            await this.bot.database.run(
-                'UPDATE users SET total_messages = total_messages + 1, last_message_time = CURRENT_TIMESTAMP WHERE user_id = ? AND guild_id = ?',
-                [userId, guildId]
-            );
-        } catch (error) {
-            logger.error('Error updating message count:', error);
-        }
-    }
-
     async updateVoiceTime(userId, guildId, minutes) {
         try {
-            await this.bot.database.run(
-                'UPDATE users SET voice_time = voice_time + ? WHERE user_id = ? AND guild_id = ?',
+            await this.bot.database.query(
+                'UPDATE user_levels SET voice_minutes = voice_minutes + ?, last_voice_update = CURRENT_TIMESTAMP WHERE user_id = ? AND guild_id = ?',
                 [minutes, userId, guildId]
             );
         } catch (error) {
@@ -269,10 +272,20 @@ class LevelingSystem {
 
     async getLeaderboard(guildId, limit = 10) {
         try {
-            return await this.bot.database.all(
-                'SELECT * FROM users WHERE guild_id = ? ORDER BY xp DESC LIMIT ?',
-                [guildId, limit]
-            );
+            // Check cache first
+            let leaderboard = await this.bot.cache.getLeaderboard(guildId);
+            
+            if (!leaderboard) {
+                // Get from database
+                leaderboard = await this.bot.database.getLeaderboard(guildId, limit);
+                
+                if (leaderboard) {
+                    // Cache the result
+                    await this.bot.cache.setLeaderboard(guildId, leaderboard);
+                }
+            }
+            
+            return leaderboard || [];
         } catch (error) {
             logger.error('Error getting leaderboard:', error);
             return [];
@@ -281,15 +294,76 @@ class LevelingSystem {
 
     async getUserRank(userId, guildId) {
         try {
-            const result = await this.bot.database.get(
-                `SELECT COUNT(*) + 1 as rank FROM users 
-                WHERE guild_id = ? AND xp > (SELECT xp FROM users WHERE user_id = ? AND guild_id = ?)`,
+            const result = await this.bot.database.query(
+                `SELECT COUNT(*) + 1 as rank FROM user_levels 
+                WHERE guild_id = ? AND xp > (SELECT xp FROM user_levels WHERE user_id = ? AND guild_id = ?)`,
                 [guildId, userId, guildId]
             );
-            return result ? result.rank : null;
+            return result[0] ? result[0].rank : null;
         } catch (error) {
             logger.error('Error getting user rank:', error);
             return null;
+        }
+    }
+
+    async createLevelReward(guildId, level, roleId) {
+        try {
+            const reward = await this.bot.database.createLevelReward(guildId, level, roleId);
+            
+            // Invalidate cache
+            await this.bot.cache.invalidateGuildSettings(guildId);
+            
+            return reward;
+        } catch (error) {
+            logger.error('Error creating level reward:', error);
+            throw error;
+        }
+    }
+
+    async removeLevelReward(guildId, level) {
+        try {
+            await this.bot.database.query(
+                'DELETE FROM level_rewards WHERE guild_id = ? AND level = ?',
+                [guildId, level]
+            );
+            
+            // Invalidate cache
+            await this.bot.cache.invalidateGuildSettings(guildId);
+            
+        } catch (error) {
+            logger.error('Error removing level reward:', error);
+            throw error;
+        }
+    }
+
+    // Batch operations for performance
+    async batchUpdateUserXP(updates) {
+        try {
+            await this.bot.database.transaction(async (connection) => {
+                for (const update of updates) {
+                    const { userId, guildId, xpToAdd, messageCount } = update;
+                    
+                    await connection.execute(
+                        `INSERT INTO user_levels (guild_id, user_id, xp, level, messages_count, last_message)
+                         VALUES (?, ?, ?, 0, ?, CURRENT_TIMESTAMP)
+                         ON DUPLICATE KEY UPDATE
+                         xp = xp + VALUES(xp),
+                         messages_count = messages_count + VALUES(messages_count),
+                         last_message = CURRENT_TIMESTAMP`,
+                        [guildId, userId, xpToAdd, messageCount]
+                    );
+                }
+            });
+            
+            // Invalidate relevant caches
+            const guildIds = [...new Set(updates.map(u => u.guildId))];
+            for (const guildId of guildIds) {
+                await this.bot.cache.invalidateLeaderboard(guildId);
+            }
+            
+        } catch (error) {
+            logger.error('Error in batch XP update:', error);
+            throw error;
         }
     }
 }

@@ -4,10 +4,26 @@
   "description": "A comprehensive Discord bot with CS2 server monitoring, player greeting, and leveling system",
   "main": "src/index.js",
   "scripts": {
-    "start": "node start.js",
+    "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "bot": "node src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "db:generate": "npx prisma generate",
+    "db:push": "npx prisma db push",
+    "db:migrate": "npx prisma migrate dev",
+    "db:studio": "npx prisma studio",
+    "db:seed": "node scripts/seed.js",
+    "backup": "node scripts/backup.js",
+    "backup:guild": "node scripts/backup.js --guild",
+    "backup:list": "node scripts/backup.js --list",
+    "restore": "node scripts/restore.js",
+    "restore:guild": "node scripts/restore.js --guild",
+    "setup": "chmod +x scripts/setup-mysql-redis.sh && ./scripts/setup-mysql-redis.sh",
+    "pm2:start": "pm2 start ecosystem.config.js --env production",
+    "pm2:stop": "pm2 stop discord-cs2-bot",
+    "pm2:restart": "pm2 restart discord-cs2-bot",
+    "pm2:logs": "pm2 logs discord-cs2-bot",
+    "pm2:monit": "pm2 monit"
   },
   "keywords": [
     "discord",
@@ -23,9 +39,15 @@
     "discord.js": "^14.14.1",
     "axios": "^1.6.2",
     "node-cron": "^3.0.3",
-    "sqlite3": "^5.1.6",
     "dotenv": "^16.3.1",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "mysql2": "^3.6.5",
+    "redis": "^4.6.12",
+    "prisma": "^5.7.1",
+    "@prisma/client": "^5.7.1",
+    "gamedig": "^4.1.0",
+    "pino": "^8.17.2",
+    "pino-pretty": "^10.3.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
