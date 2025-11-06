@@ -25,11 +25,13 @@ jobs:
     - name: Check for Snyk token
       id: check-snyk-token
       run: |
-        if [ -n "${{ secrets.SNYK_TOKEN }}" ]; then
+        if [ -n "$SNYK_TOKEN" ]; then
           echo "token-exists=true" >> $GITHUB_OUTPUT
         else
           echo "token-exists=false" >> $GITHUB_OUTPUT
         fi
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         
     - name: Run Snyk security scan
       uses: snyk/actions/node@master

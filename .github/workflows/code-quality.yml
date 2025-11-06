@@ -25,9 +25,11 @@ jobs:
 
     - name: Run ESLint
       run: npx eslint src/ --ext .js || echo "ESLint not configured"
+      continue-on-error: true
 
     - name: Run Prettier check
       run: npx prettier --check src/ || echo "Prettier not configured"
+      continue-on-error: true
 
     - name: Check code formatting
       run: |

@@ -44,15 +44,13 @@ jobs:
 
     - name: Create GitHub Release
       id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
         body: |
           ## Discord CS2 Bot Release ${{ github.ref_name }}
-          
+
           ### Features
           - High-performance MySQL database with Redis caching
           - CS2 server monitoring with gamedig
@@ -60,7 +58,7 @@ jobs:
           - Automated greetings and role management
           - Multi-language support
           - Comprehensive logging and monitoring
-          
+
           ### Installation
           1. Download the archive for your platform
           2. Extract the files
@@ -68,29 +66,12 @@ jobs:
           4. Configure your `.env` file
           5. Run `npm run setup` to initialize database
           6. Start with `npm start`
-          
+
           ### Files
           - `discord-cs2-bot-${{ github.ref_name }}.tar.gz` - Linux/macOS
           - `discord-cs2-bot-${{ github.ref_name }}.zip` - Windows
         draft: false
         prerelease: false
-
-    - name: Upload Release Assets
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./discord-cs2-bot-${{ github.ref_name }}.tar.gz
-        asset_name: discord-cs2-bot-${{ github.ref_name }}.tar.gz
-        asset_content_type: application/gzip
-
-    - name: Upload Release Assets (Windows)
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./discord-cs2-bot-${{ github.ref_name }}.zip
-        asset_name: discord-cs2-bot-${{ github.ref_name }}.zip
-        asset_content_type: application/zip
+        files: |
+          ./discord-cs2-bot-${{ github.ref_name }}.tar.gz
+          ./discord-cs2-bot-${{ github.ref_name }}.zip
