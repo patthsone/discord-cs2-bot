@@ -2,6 +2,13 @@
 
 A high-performance Discord bot for managing gaming communities with CS2 server monitoring, player leveling system, and automated greetings. Built with MySQL, Redis caching, and modern Node.js technologies.
 
+## 🌍 Documentation
+
+This documentation is available in multiple languages:
+- **English**: [README.md](README.md)
+- **Русский**: [README.ru.md](README.ru.md)
+- **Українська**: [README.uk.md](README.uk.md)
+
 ## 🚀 Features
 
 ### Core Functionality
